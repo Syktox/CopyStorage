@@ -1,0 +1,59 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Swift Package Manager / Xcode build output
+.build/
+.swiftpm/
+DerivedData/
+build/
+*.build/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+
+# Xcode project user settings
+xcuserdata/
+
+# Local editor and tool settings
+.vscode/
+.idea/
+.codex/
+.agents/
+
+# Logs, diagnostics, and temporary files
+*.log
+*.diag
+*.tmp
+*.temp
+*.swp
+*.swo
+*.stackdump
+/.cache/
+/tmp/
+/temp/
+
+# Coverage and profiling output
+*.profdata
+*.gcda
+*.gcno
+coverage/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.cer
+*.key
+
+# Local app data / clipboard history
+Application Support/
+**/Application Support/ClipboardHistory/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
