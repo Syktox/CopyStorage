@@ -7,6 +7,7 @@ final class ClipboardHistoryViewModel: ObservableObject {
     let historyStore: ClipboardHistoryStore
     let onClose: () -> Void
     let onRestore: (ClipboardEntry) -> Void
+    let onUpdate: () -> Void
 
     @Published var searchText = ""
     @Published var selectedKind: ClipboardEntryKind?
@@ -20,11 +21,13 @@ final class ClipboardHistoryViewModel: ObservableObject {
     init(
         historyStore: ClipboardHistoryStore,
         onClose: @escaping () -> Void,
-        onRestore: @escaping (ClipboardEntry) -> Void
+        onRestore: @escaping (ClipboardEntry) -> Void,
+        onUpdate: @escaping () -> Void = {}
     ) {
         self.historyStore = historyStore
         self.onClose = onClose
         self.onRestore = onRestore
+        self.onUpdate = onUpdate
         selectedKind = nil
 
         historyStore.$entries
@@ -120,13 +123,15 @@ struct ClipboardHistoryView: View {
     init(
         historyStore: ClipboardHistoryStore,
         onClose: @escaping () -> Void,
-        onRestore: @escaping (ClipboardEntry) -> Void
+        onRestore: @escaping (ClipboardEntry) -> Void,
+        onUpdate: @escaping () -> Void = {}
     ) {
         _viewModel = StateObject(
             wrappedValue: ClipboardHistoryViewModel(
                 historyStore: historyStore,
                 onClose: onClose,
-                onRestore: onRestore
+                onRestore: onRestore,
+                onUpdate: onUpdate
             )
         )
     }
@@ -151,7 +156,8 @@ struct ClipboardHistoryView: View {
                             ClipboardEntryRow(
                                 entry: entry,
                                 isLatest: entry == viewModel.visibleEntries.first,
-                                isSelected: viewModel.historyStore.selectedEntryID == entry.id
+                                isSelected: viewModel.historyStore.selectedEntryID == entry.id,
+                                thumbnailLoader: viewModel.historyStore.thumbnail(for:)
                             ) {
                                 viewModel.restore(entry)
                             }
@@ -217,6 +223,13 @@ struct ClipboardHistoryView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Close Clipboard History")
+
+                Button(action: viewModel.onUpdate) {
+                    Label("Update List", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("Add the current clipboard item to history")
             }
 
             TextField("Search clipboard", text: $viewModel.searchText)
@@ -227,7 +240,7 @@ struct ClipboardHistoryView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
                         filterButton("All", kind: nil)
-                        ForEach(ClipboardEntryKind.allCases, id: \.self) { kind in
+                        ForEach([ClipboardEntryKind.text, .image, .file], id: \.self) { kind in
                             filterButton(kind.title, kind: kind)
                         }
                     }
@@ -324,20 +337,29 @@ final class ClipboardEntryRowViewModel: ObservableObject {
     let isLatest: Bool
     let isSelected: Bool
     let action: () -> Void
+    private let thumbnailLoader: (ClipboardEntry) -> NSImage?
 
     @Published var thumbnail: NSImage? = nil
 
-    init(entry: ClipboardEntry, isLatest: Bool, isSelected: Bool, action: @escaping () -> Void) {
+    init(
+        entry: ClipboardEntry,
+        isLatest: Bool,
+        isSelected: Bool,
+        thumbnailLoader: @escaping (ClipboardEntry) -> NSImage? = { entry in
+            (try? DiskHistoryPersistence())?.loadThumbnail(for: entry)
+        },
+        action: @escaping () -> Void
+    ) {
         self.entry = entry
         self.isLatest = isLatest
         self.isSelected = isSelected
         self.action = action
+        self.thumbnailLoader = thumbnailLoader
 
         if entry.kind == .image {
-            Task.detached(priority: .utility) { [entry] in
-                if let persistence = try? DiskHistoryPersistence(),
-                   let thumb = persistence.loadThumbnail(for: entry) {
-                    await MainActor.run { [weak self] in self?.thumbnail = thumb }
+            Task { [weak self, entry, thumbnailLoader] in
+                if let thumb = thumbnailLoader(entry) {
+                    self?.thumbnail = thumb
                 }
             }
         }
@@ -357,17 +379,39 @@ final class ClipboardEntryRowViewModel: ObservableObject {
 private struct ClipboardEntryRow: View {
     @StateObject var viewModel: ClipboardEntryRowViewModel
 
-    init(entry: ClipboardEntry, isLatest: Bool, isSelected: Bool, action: @escaping () -> Void) {
-        _viewModel = StateObject(wrappedValue: ClipboardEntryRowViewModel(entry: entry, isLatest: isLatest, isSelected: isSelected, action: action))
+    init(
+        entry: ClipboardEntry,
+        isLatest: Bool,
+        isSelected: Bool,
+        thumbnailLoader: @escaping (ClipboardEntry) -> NSImage? = { entry in
+            (try? DiskHistoryPersistence())?.loadThumbnail(for: entry)
+        },
+        action: @escaping () -> Void
+    ) {
+        _viewModel = StateObject(wrappedValue: ClipboardEntryRowViewModel(
+            entry: entry,
+            isLatest: isLatest,
+            isSelected: isSelected,
+            thumbnailLoader: thumbnailLoader,
+            action: action
+        ))
     }
 
     var body: some View {
         Button(action: viewModel.action) {
             HStack(alignment: .center, spacing: 10) {
-                Text(viewModel.entry.kind.indicatorLetter)
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
-                    .foregroundStyle(viewModel.entry.kind.indicatorColor)
-                    .frame(width: 20)
+                if let thumbnail = viewModel.thumbnail {
+                    Image(nsImage: thumbnail)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 42, height: 42)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                } else {
+                    Text(viewModel.entry.kind.indicatorLetter)
+                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .foregroundStyle(viewModel.entry.kind.indicatorColor)
+                        .frame(width: 42, height: 42)
+                }
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(viewModel.previewText)

@@ -88,7 +88,8 @@ final class HistoryPanelCoordinator: NSObject, NSWindowDelegate {
             rootView: ClipboardHistoryView(
                 historyStore: historyStore,
                 onClose: { [weak self] in self?.close() },
-                onRestore: { [weak self] entry in self?.restoreAndPaste(entry) }
+                onRestore: { [weak self] entry in self?.restoreAndPaste(entry) },
+                onUpdate: { [weak self] in self?.updateHistory() }
             )
         )
         return panel
@@ -135,6 +136,14 @@ final class HistoryPanelCoordinator: NSObject, NSWindowDelegate {
             keyUp?.flags = .maskCommand
             keyDown?.post(tap: .cghidEventTap)
             keyUp?.post(tap: .cghidEventTap)
+        }
+    }
+
+    private func updateHistory() {
+        Task { @MainActor in
+            let snapshotter = ClipboardSnapshotter()
+            guard let captured = await snapshotter.snapshot() else { return }
+            historyStore.ingest(captured)
         }
     }
 

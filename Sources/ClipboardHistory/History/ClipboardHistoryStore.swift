@@ -1,4 +1,5 @@
 import Combine
+import AppKit
 import Foundation
 
 @MainActor
@@ -11,10 +12,6 @@ final class ClipboardHistoryStore: ObservableObject {
     private let writer: ClipboardWriter
     let maximumEntries: Int
     let maximumStorageBytes: Int64
-
-    /// The app delegate connects this to its monitor so restoring an item does
-    /// not feed back into capture as a new clipboard entry.
-    var didRestorePasteboard: (() -> Void)?
 
     init(
         persistence: DiskHistoryPersistence? = nil,
@@ -76,11 +73,14 @@ final class ClipboardHistoryStore: ObservableObject {
 
         do {
             try writer.restore(entry, from: persistence)
-            didRestorePasteboard?()
             touch(entry.id)
         } catch {
             lastErrorMessage = "This clipboard item could not be restored."
         }
+    }
+
+    func thumbnail(for entry: ClipboardEntry) -> NSImage? {
+        persistence?.loadThumbnail(for: entry)
     }
 
     func togglePin(_ entry: ClipboardEntry) {
